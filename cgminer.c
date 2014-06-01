@@ -4700,7 +4700,7 @@ out_unlock:
 
 	if (showlog) {
 		if (!curses_active) {
-			printf("%s          \r", statusline);
+			printf("%s          \r\n", statusline);
 			fflush(stdout);
 		} else
 			applog(LOG_INFO, "%s", statusline);
@@ -4904,6 +4904,7 @@ static bool supports_resume(struct pool *pool)
 
 	return ret;
 }
+int restart_flag;
 
 /* One stratum thread per pool that has stratum waits on the socket checking
  * for new messages and for the integrity of the socket connection. We reset
@@ -4992,9 +4993,16 @@ static void *stratum_thread(void *userdata)
 		 * has not had its idle flag cleared */
 		stratum_resumed(pool);
 
+		restart_flag=0;
+
 		if (!parse_method(pool, s) && !parse_stratum_response(pool, s))
 			applog(LOG_INFO, "Unknown stratum msg: %s", s);
 		free(s);
+		if(restart_flag==1){
+			restart_flag = 0;
+			clear_pool_work(pool);
+			pool->swork.clean = true;
+		}
 		if (pool->swork.clean) {
 			struct work *work = make_work();
 

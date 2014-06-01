@@ -1304,6 +1304,8 @@ out:
 	return ret;
 }
 
+extern int restart_flag;
+
 static bool parse_diff(struct pool *pool, json_t *val)
 {
 	double diff;
@@ -1313,6 +1315,10 @@ static bool parse_diff(struct pool *pool, json_t *val)
 		return false;
 
 	cg_wlock(&pool->data_lock);
+	if((pool->swork.diff!=1)&&(pool->swork.diff!=diff)){
+		//applog(LOG_ERR, "Pool %d difficulty set to %f and restart", pool->pool_no, diff);
+		restart_flag=1;
+	}
 	pool->swork.diff = diff;
 	cg_wunlock(&pool->data_lock);
 
