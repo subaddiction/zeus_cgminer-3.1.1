@@ -54,7 +54,7 @@
 
 #include "elist.h"
 #include "fpgautils.h"
-
+#include "compat.h"
 
 
 #define CHIP_GEN1_CORES 8
@@ -138,7 +138,7 @@ static int option_offset = -1;
 struct device_drv icarus_drv;
 
 
-uint8_t flush_buf[100];
+uint8_t flush_buf[400];
 
 void flush_uart(int fd)
 {
@@ -321,7 +321,10 @@ static bool icarus_detect_one(const char *devpath)
 	
 	int baud, cores_perchip, chips_count_max,chips_count;
 	uint32_t clk_reg;
+	uint32_t clk_reg_init;
 	uint64_t golden_speed_percore;
+	
+#if 1	
 	if(opt_chip_clk>(0xff*3/2)){
 		opt_chip_clk = 0xff*3/2;
 	}
@@ -329,13 +332,11 @@ static bool icarus_detect_one(const char *devpath)
 		opt_chip_clk = 2;
 	}
 
-	
 	clk_reg= (uint32_t)(opt_chip_clk*2/3);
+#endif
 		
-	//0x55aa0000;
-	uint32_t clk_header = (clk_reg<<24)+((0xff-clk_reg)<<16);
 	char clk_header_str[10];
-	sprintf(clk_header_str,"%08x",clk_header+1);
+		
 	
 
 #if 1
@@ -343,7 +344,10 @@ static bool icarus_detect_one(const char *devpath)
 		"55aa0001"
 		"00038000063b0b1b028f32535e900609c15dc49a42b1d8492a6dd4f8f15295c989a1decf584a6aa93be26066d3185f55ef635b5865a7a79b7fa74121a6bb819da416328a9bd2f8cef72794bf02000000";
 
-	memcpy(golden_ob,clk_header_str,8);
+	char golden_ob2[] =
+		"55aa00ff"
+		"c00278894532091be6f16a5381ad33619dacb9e6a4a6e79956aac97b51112bfb93dc450b8fc765181a344b6244d42d78625f5c39463bbfdc10405ff711dc1222dd065b015ac9c2c66e28da7202000000";
+
 	const char golden_nonce[] = "00038d26";
 	const uint32_t golden_nonce_val = 0x00038d26;// 0xd26= 3366
 #endif
@@ -364,9 +368,6 @@ static bool icarus_detect_one(const char *devpath)
 	chips_count_max = opt_chips_count_max;
 
 
-		
-	if (opt_ltc_nocheck_golden==false){
-		
 		applog(LOG_DEBUG, "Icarus Detect: Attempting to open %s", devpath);
 		
 		fd = icarus_open2(devpath, baud, true);
@@ -375,7 +376,60 @@ static bool icarus_detect_one(const char *devpath)
 			return false;
 		}
 		
-		read(fd, flush_buf, 100);
+	uint32_t clk_header;
+
+
+
+	//from 150M step to the high or low speed. we need to add delay and resend to init chip
+
+
+	if(clk_reg>(150*2/3)){
+		clk_reg_init = 165*2/3;
+	}
+	else {
+		clk_reg_init = 139*2/3;
+	}
+
+	
+	flush_uart(fd);
+		
+	clk_header = (clk_reg_init<<24)+((0xff-clk_reg_init)<<16);
+	sprintf(clk_header_str,"%08x",clk_header+0x01);
+	memcpy(golden_ob2,clk_header_str,8);
+		
+	hex2bin(ob_bin, golden_ob2, numbytes);
+	icarus_write(fd, ob_bin, numbytes);
+	sleep(1);
+	flush_uart(fd);
+	icarus_write(fd, ob_bin, numbytes);
+	sleep(1);
+	flush_uart(fd);
+	icarus_write(fd, ob_bin, numbytes);
+	read(fd, flush_buf, 400);
+
+
+	clk_header = (clk_reg<<24)+((0xff-clk_reg)<<16);
+	sprintf(clk_header_str,"%08x",clk_header+0x01);
+	memcpy(golden_ob2,clk_header_str,8);
+		
+	hex2bin(ob_bin, golden_ob2, numbytes);
+	icarus_write(fd, ob_bin, numbytes);
+	sleep(1);
+	flush_uart(fd);
+	icarus_write(fd, ob_bin, numbytes);
+	sleep(1);
+	flush_uart(fd);
+
+
+
+	clk_header = (clk_reg<<24)+((0xff-clk_reg)<<16);
+	sprintf(clk_header_str,"%08x",clk_header+1);
+	memcpy(golden_ob,clk_header_str,8);
+
+
+	if (opt_ltc_nocheck_golden==false){
+		
+		read(fd, flush_buf, 400);
 		hex2bin(ob_bin, golden_ob, numbytes);	
 		icarus_write(fd, ob_bin, numbytes);
 		cgtime(&tv_start);
@@ -410,6 +464,8 @@ static bool icarus_detect_one(const char *devpath)
 		free(nonce_hex);
 	}
 	else{
+		
+		icarus_close(fd);
 		golden_speed_percore = (((opt_chip_clk*2)/3)*1024)/8;
 	}
 
@@ -583,7 +639,7 @@ static int64_t icarus_scanhash(struct thr_info *thr, struct work *work,
 	}
 
 
-	read(fd, flush_buf, 100);
+	read(fd, flush_buf, 400);
 	ret = icarus_write(fd, ob_bin, 84); 
 	if (ret) {
 		do_icarus_close(thr);
