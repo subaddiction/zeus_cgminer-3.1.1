@@ -105,6 +105,9 @@ int gpu_threads;
 bool opt_scrypt;
 #endif
 #endif
+
+bool opt_scrypt=true;
+
 bool opt_restart = true;
 static bool opt_nogpu;
 
@@ -147,6 +150,13 @@ char *opt_usb_select = NULL;
 int opt_usbdump = -1;
 bool opt_usb_list_all;
 #endif
+
+bool opt_ltc_debug = false;
+bool opt_ltc_nocheck_golden = false;
+bool opt_nocheck_scrypt = false;
+int opt_chips_count = 1;
+int opt_chip_clk = 200; //MegaHz
+
 
 char *opt_kernel_path;
 char *cgminer_path;
@@ -1001,12 +1011,39 @@ static struct opt_table opt_config_table[] = {
 		     "Override sha256 kernel to use (diablo, poclbm, phatk or diakgcn) - one value or comma separated"),
 #endif
 #ifdef USE_ICARUS
+
+#if 0
 	OPT_WITH_ARG("--icarus-options",
 		     set_icarus_options, NULL, NULL,
 		     opt_hidden),
 	OPT_WITH_ARG("--icarus-timing",
 		     set_icarus_timing, NULL, NULL,
 		     opt_hidden),
+#endif
+
+
+		 
+OPT_WITHOUT_ARG("--ltc-debug",
+			 opt_set_bool, &opt_ltc_debug,
+			 "Enable ltc debug output"),
+			 
+			 
+OPT_WITHOUT_ARG("--nocheck-golden",
+			 opt_set_bool, &opt_ltc_nocheck_golden,
+			 "Disable ltc init golden check"),
+
+OPT_WITHOUT_ARG("--nocheck-scrypt",
+			 opt_set_bool, &opt_nocheck_scrypt,
+			 "Disable scrypt result check, must enable in openwrt building"),
+
+
+OPT_WITH_ARG("--chips-count",
+		 set_int_1_to_65535, opt_show_intval, &opt_chips_count,
+		 "Chips count in one com port"),
+OPT_WITH_ARG("--ltc-clk",
+		 set_int_1_to_65535, opt_show_intval, &opt_chip_clk,
+		 "clock Mhz"),
+
 #endif
 #ifdef USE_AVALON
 	OPT_WITH_ARG("--avalon-options",
@@ -1100,9 +1137,6 @@ static struct opt_table opt_config_table[] = {
 	OPT_WITHOUT_ARG("--scrypt",
 			opt_set_bool, &opt_scrypt,
 			"Use the scrypt algorithm for mining (litecoin only)"),
-	OPT_WITH_ARG("--shaders",
-		     set_shaders, NULL, NULL,
-		     "GPU shaders per card for tuning scrypt, comma separated"),
 #endif
 	OPT_WITH_ARG("--sharelog",
 		     set_sharelog, NULL, NULL,
@@ -1142,11 +1176,7 @@ static struct opt_table opt_config_table[] = {
 			opt_hidden
 #endif
 	),
-#ifdef USE_SCRYPT
-	OPT_WITH_ARG("--thread-concurrency",
-		     set_thread_concurrency, NULL, NULL,
-		     "Set GPU thread concurrency for scrypt mining, comma separated"),
-#endif
+
 	OPT_WITH_ARG("--url|-o",
 		     set_url, NULL, NULL,
 		     "URL for bitcoin JSON-RPC server"),
@@ -1892,7 +1922,7 @@ void tailsprintf(char *f, const char *fmt, ...)
 
 /* Convert a uint64_t value into a truncated string for displaying with its
  * associated suitable for Mega, Giga etc. Buf array needs to be long enough */
-static void suffix_string(uint64_t val, char *buf, int sigdigits)
+void suffix_string(uint64_t val, char *buf, int sigdigits)
 {
 	const double  dkilo = 1000.0;
 	const uint64_t kilo = 1000ull;
@@ -5479,26 +5509,29 @@ void submit_nonce(struct thr_info *thr, struct work *work, uint32_t nonce)
 	mutex_unlock(&stats_lock);
 
 	/* Do one last check before attempting to submit the work */
-	rebuild_hash(work);
-	flip32(hash2_32, work->hash);
+	if(opt_nocheck_scrypt==false){
+		rebuild_hash(work);
+		flip32(hash2_32, work->hash);
 
-	diff1targ = opt_scrypt ? 0x0000ffffUL : 0;
-	if (be32toh(hash2_32[7]) > diff1targ) {
-		applog(LOG_WARNING, "%s%d: invalid nonce - HW error",
-				thr->cgpu->drv->name, thr->cgpu->device_id);
+		diff1targ = opt_scrypt ? 0x0000ffffUL : 0;
+		if (be32toh(hash2_32[7]) > diff1targ) {
+			applog(LOG_WARNING, "%s%d: invalid nonce - HW error",
+					thr->cgpu->drv->name, thr->cgpu->device_id);
 
-		inc_hw_errors(thr);
-		return;
-	}
+			inc_hw_errors(thr);
+			return;
+		}
+		if (!fulltest(hash2, work->target)) {
+			applog(LOG_INFO, "Share below target");
+			return;
+		}	
 
+	}	
 	mutex_lock(&stats_lock);
 	thr->cgpu->last_device_valid_work = time(NULL);
 	mutex_unlock(&stats_lock);
 
-	if (!fulltest(hash2, work->target)) {
-		applog(LOG_INFO, "Share below target");
-		return;
-	}
+
 
 	submit_work_async(work, &tv_work_found);
 }
@@ -5566,26 +5599,17 @@ static void hash_sole_work(struct thr_info *mythr)
 				"mining thread %d", thr_id);
 			break;
 		}
-		work->device_diff = MIN(drv->working_diff, work->work_difficulty);
-#ifdef USE_SCRYPT
-		/* Dynamically adjust the working diff even if the target
-		 * diff is very high to ensure we can still validate scrypt is
-		 * returning shares. */
-		if (opt_scrypt) {
-			double wu;
 
-			wu = total_diff1 / total_secs * 60;
-			if (wu > 30 && drv->working_diff < drv->max_diff &&
-			    drv->working_diff < work->work_difficulty) {
-				drv->working_diff++;
-				applog(LOG_DEBUG, "Driver %s working diff changed to %.0f",
-					drv->dname, drv->working_diff);
-				work->device_diff = MIN(drv->working_diff, work->work_difficulty);
-			} else if (drv->working_diff > work->work_difficulty)
-				drv->working_diff = work->work_difficulty;
-			set_target(work->device_target, work->device_diff);
+		if(work->work_difficulty>32768){
+			work->device_diff=32768;
 		}
-#endif
+		else if(work->work_difficulty<1){
+			work->device_diff = 1;
+		}
+		else{
+			work->device_diff = work->work_difficulty;
+		}
+
 
 		do {
 			cgtime(&tv_start);
@@ -6838,10 +6862,6 @@ void fill_device_drv(struct cgpu_info *cgpu)
 		drv->flush_work = &noop_flush_work;
 	if (!drv->queue_full)
 		drv->queue_full = &noop_queue_full;
-	if (!drv->max_diff)
-		drv->max_diff = 1;
-	if (!drv->working_diff)
-		drv->working_diff = 1;
 }
 
 void enable_device(struct cgpu_info *cgpu)
@@ -7211,7 +7231,6 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef USE_ICARUS
-	if (!opt_scrypt)
 		icarus_drv.drv_detect();
 #endif
 

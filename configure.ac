@@ -126,7 +126,7 @@ if test -n "$CGMINER_SDK"; then
 	LDFLAGS="-L$CGMINER_SDK/lib/$target $LDFLAGS"
 fi
 
-opencl="yes"
+opencl="no"
 
 AC_ARG_ENABLE([opencl],
 	[AC_HELP_STRING([--disable-opencl],[Override detection and disable building with opencl])],
@@ -183,7 +183,15 @@ AC_ARG_ENABLE([adl],
 	[adl=$enableval]
 	)
 
-scrypt="no"
+scrypt="yes"
+
+AC_ARG_ENABLE([scrypt],
+	[AC_HELP_STRING([--enable-scrypt],[Compile support for scrypt litecoin mining (default enabled)])],
+	[scrypt=$enableval]
+	)
+if test "x$scrypt" = xyes; then
+	AC_DEFINE([USE_SCRYPT], [1], [Defined to 1 if scrypt support is wanted])
+fi
 
 if test "$found_opencl" = 1; then
 	if test "x$adl" != xno; then
@@ -200,13 +208,6 @@ if test "$found_opencl" = 1; then
 		fi
 	fi
 
-	AC_ARG_ENABLE([scrypt],
-		[AC_HELP_STRING([--enable-scrypt],[Compile support for scrypt litecoin mining (default disabled)])],
-		[scrypt=$enableval]
-		)
-	if test "x$scrypt" = xyes; then
-		AC_DEFINE([USE_SCRYPT], [1], [Defined to 1 if scrypt support is wanted])
-	fi
 else
 	DLOPEN_FLAGS=""
 fi
@@ -235,10 +236,10 @@ if test "x$bitforce" = xyes; then
 fi
 AM_CONDITIONAL([HAS_BITFORCE], [test x$bitforce = xyes])
 
-icarus="no"
+icarus="yes"
 
 AC_ARG_ENABLE([icarus],
-	[AC_HELP_STRING([--enable-icarus],[Compile support for Icarus (default disabled)])],
+	[AC_HELP_STRING([--enable-icarus],[Compile support for Icarus (default enabled)])],
 	[icarus=$enableval]
 	)
 if test "x$icarus" = xyes; then
@@ -279,7 +280,7 @@ if test "x$ztex" = xyes; then
 fi
 AM_CONDITIONAL([HAS_ZTEX], [test x$ztex = xyes])
 
-curses="auto"
+curses="no"
 
 AC_ARG_WITH([curses],
 	[AC_HELP_STRING([--without-curses],[Compile support for curses TUI (default enabled)])],
@@ -467,14 +468,15 @@ echo
 
 echo "  curses.TUI...........: $cursesmsg"
 
-if test "x$opencl" != xno; then
-	if test $found_opencl = 1; then
-		echo "  OpenCL...............: FOUND. GPU mining support enabled"
 	if test "x$scrypt" != xno; then
 		echo "  scrypt...............: Enabled"
 	else
 		echo "  scrypt...............: Disabled"
 	fi
+
+if test "x$opencl" != xno; then
+	if test $found_opencl = 1; then
+		echo "  OpenCL...............: FOUND. GPU mining support enabled"
 
 	else
 		echo "  OpenCL...............: NOT FOUND. GPU mining support DISABLED"
@@ -488,7 +490,6 @@ else
 	if test "x$bitforce$icarus$avalon$ztex$modminer$bflsc" = xnononononono; then
 		AC_MSG_ERROR([No mining configured in])
 	fi
-	echo "  scrypt...............: Disabled (needs OpenCL)"
 fi
 
 if test "x$adl" != xno; then
