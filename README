@@ -1,3 +1,51 @@
+BASED ON:
+CG Miner: https://github.com/ckolivas/cgminer
+Zeus Miner: http://zeusminer.com/
+
+
+
+BUILD FROM SOURCE:
+1) SSH/Log into your OS
+2) CD into the repository to clone to
+3) Enter the following command to clone the repository to your local directory
+git clone https://github.com/Darkwinde/zeus_cgminer-3.1.1.git
+4) To compile the miner perform the following commands (each one can take a while, no worry)
+cd zeus_cgminer-3.1.1
+autoreconf -fvi
+./configure CFLAGS="-O3"
+make
+
+
+
+START MINER:
+./cgminer -o stratum+tcp://URL:PORT -u USERNAME -p PASSWORD --nocheck-golden --chips-count 6 --ltc-clk 328 -S /dev/ttyUSB0
+
+
+
+HINTS:
+Chips-Count
+   Blizzard: 6
+   Cyclone: 96
+   Hurricane X2: 48 (2*24)
+   Hurricane X3: 64 (2*32)
+   Thunder X2: 96 (4*24)
+   Thunder X3: 128 (4*32)
+
+LTC-CLK (Core Clock)
+Start with 280 and increase the clock frequency step by step until the hardware errors got to high (>10%).
+The most likely spot seems to be a value of 328.
+
+S (Searching for Devices)
+Depending on your infrastructure you might can use search all or set a specific USB port. The portname depends on the interfaces the miner plugged to.
+You can figure it out by using command lsusb.
+
+
+
+
+
+ ----------------------------------
+| Original Readme of cgminer 3.1.1 |
+ ----------------------------------
 This is a multi-threaded multi-pool GPU, FPGA and ASIC miner with ATI GPU
 monitoring, (over)clocking and fanspeed support for bitcoin and derivative
 coins. Do not use on multiple block chains at the same time!
