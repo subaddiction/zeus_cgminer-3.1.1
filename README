@@ -12,6 +12,7 @@ git clone https://github.com/Darkwinde/zeus_cgminer-3.1.1.git
 4) To compile the miner perform the following commands (each one can take a while, no worry)
 cd zeus_cgminer-3.1.1
 autoreconf -fvi
+chmod +x ./configure
 ./configure CFLAGS="-O3"
 make
 
@@ -38,6 +39,26 @@ The most likely spot seems to be a value of 328.
 S (Searching for Devices)
 Depending on your infrastructure you might can use search all or set a specific USB port. The portname depends on the interfaces the miner plugged to.
 You can figure it out by using command lsusb.
+
+
+
+USB ACCESS
+If you don't have access to /dev/tty* devices as a user on Linux:
+When mining on linux, but not using 'sudo' and not logged into 'root' you
+may get a USB priviledge error (-3), so you may also need to do the following:
+1) SSH/Log into your OS
+2) CD into the cgminer directory
+3) Copy the file "01-cgminer.rules" to udev:
+cp 01-cgminer.rules  /etc/udev/rules.d/01-cgminer.rules
+4) Edit the file "01-cgminer.rules" with an editor of your choice and add:
+ATTRS{idVendor}=="0403", ATTRS{idProduct}=="6014", SUBSYSTEMS=="usb", ACTION=="add", MODE="0666", GROUP="plugdev"
+ATTRS{idVendor}=="1fc9", ATTRS{idProduct}=="0003", SUBSYSTEMS=="usb", ACTION=="add", MODE="0666", GROUP="plugdev"
+5) Add yourself to plugdev group
+usermod -G plugdev -a whoami
+5.1) If plugdev group does not exist:
+groupadd plugdev
+6) Reboot your system
+
 
 
 
