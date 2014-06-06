@@ -280,7 +280,7 @@ if test "x$ztex" = xyes; then
 fi
 AM_CONDITIONAL([HAS_ZTEX], [test x$ztex = xyes])
 
-curses="auto"
+curses="no"
 
 AC_ARG_WITH([curses],
 	[AC_HELP_STRING([--without-curses],[Compile support for curses TUI (default enabled)])],
